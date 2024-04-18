@@ -1,16 +1,18 @@
+import re
 import torch
 import time
 import asyncio
 import bittensor as bt
 
 from subnet.constants import DEFAULT_PROCESS_TIME
-from subnet.shared.subtensor import get_current_block
+from subnet.shared.substrate import (
+    get_sync_state,
+    get_node_peer_id,
+    get_listen_addresses,
+)
 from subnet.validator.models import Miner
 from subnet.validator.synapse import send_scope
-from subnet.validator.utils import (
-    get_next_uids,
-    ping_uid,
-)
+from subnet.validator.utils import get_next_uids, ping_uid, deregister_suspicious_uid
 from subnet.validator.bonding import update_statistics
 from subnet.validator.state import log_event
 from subnet.validator.score import (
@@ -20,7 +22,6 @@ from subnet.validator.score import (
     compute_distribution_score,
     compute_final_score,
 )
-from substrateinterface.base import SubstrateInterface
 
 
 CHALLENGE_NAME = "Challenge"
@@ -31,58 +32,83 @@ async def handle_synapse(self, uid: int):
     miner: Miner = next((miner for miner in self.miners if miner.uid == uid), None)
 
     # Check the miner is available
-    available = await ping_uid(self, miner.uid)
-    if available == False:
+    result = await ping_uid(self, miner.uid)
+    if result != 1:
         miner.verified = False
+        miner.owner = result == 0
         miner.process_time = DEFAULT_PROCESS_TIME
-        bt.logging.warning(f"[{CHALLENGE_NAME}][{miner.uid}] Miner is not reachable")
-        return
+        return "Miner is not verified"
 
     bt.logging.trace(f"[{CHALLENGE_NAME}][{miner.uid}] Miner verified")
 
     verified = False
+    reason = None
+    owner = True
     process_time: float = DEFAULT_PROCESS_TIME
     try:
-        # Create a subtensor with the ip return by the synapse
-        substrate = SubstrateInterface(
-            ss58_format=bt.__ss58_format__,
-            use_remote_preset=True,
-            url=f"ws://{miner.ip}:9944",
-            type_registry=bt.__type_registry__,
-        )
+        # Get the peer id of the subtensor
+        first_start_time = time.time()
+        request_id = self.subtensor.substrate.request_id + 1
+        peer_id = get_node_peer_id(miner.ip, request_id)
+        first_process_time = time.time() - first_start_time
+        bt.logging.trace(f"[{CHALLENGE_NAME}][{miner.uid}] Subtensor peer id {peer_id}")
 
-        # Start the timer
-        start_time = time.time()
+        # Get the listen addresses
+        second_start_time = time.time()
+        request_id = self.subtensor.substrate.request_id + 1
+        addresses = get_listen_addresses(miner.ip, request_id)
+        second_process_time = time.time() - second_start_time
+        bt.logging.trace(f"[{CHALLENGE_NAME}][{miner.uid}] Subtensor listen addresses: {addresses}")
 
-        # Get the current block from the miner subtensor
-        miner_block = substrate.get_block()
-        if miner_block != None:
-            miner_block = miner_block["header"]["number"]
+        # Check the ownership of the subtensor
+        address = f"/ip4/{miner.ip}/tcp/30333/ws/p2p/{peer_id}"
+        owner = address in addresses
+        if not owner:
+            print(addresses)
+            ip_pattern = r"/ip4/(\d+\.\d+\.\d+\.\d+)/"
+            ips = [re.search(ip_pattern, address).group(1) for address in addresses]
+            owner_uid = next(
+                (miner.uid for miner in self.miners if miner.ip in ips), None
+            )
+            copyright = f" {owner_uid}" if owner_uid else ""
+            reason = (
+                f"Subtensor is not verified - subtensor owned by another uid{copyright}"
+            )
+
+        # Check the state of the subtensor
+        third_start_time = time.time()
+        request_id = self.subtensor.substrate.request_id + 1
+        state = get_sync_state(miner.ip, request_id)
+        third_process_time = time.time() - third_start_time
+        bt.logging.trace(f"[{CHALLENGE_NAME}][{miner.uid}] Subtensor state {state}")
+
+        is_sync = state.get("currentBlock") == state.get("highestBlock")
+        if not is_sync:
+            reason = "Subtensor is not verified - it is desynchronised"
 
         # Compute the process time
-        process_time = time.time() - start_time
+        process_time = (
+            first_process_time + second_process_time + third_process_time
+        ) / 3
 
-        # Get the current block from the validator subtensor
-        validator_block = get_current_block(self.subtensor)
-
-        # Check both blocks are the same
-        verified = (
-            miner_block == validator_block or (validator_block - miner_block) <= 1
-        )
-
-        bt.logging.trace(
-            f"[{CHALLENGE_NAME}][{miner.uid}] Subtensor verified ? {verified} - val: {validator_block}, miner:{miner_block}"
-        )
+        # Check if subtensor is verified
+        verified = owner and is_sync
+        if verified:
+            bt.logging.trace(f"[{CHALLENGE_NAME}][{miner.uid}] Subtensor verified")
     except Exception as ex:
         verified = False
         bt.logging.warning(
             f"[{CHALLENGE_NAME}][{miner.uid}] Subtensor not verified: {ex}"
         )
+        reason = "Subtensor is not verified"
 
     # Update the miner object
     finally:
         miner.verified = verified
         miner.process_time = process_time
+        miner.owner = owner
+
+    return reason
 
 
 async def challenge_data(self):
@@ -92,13 +118,19 @@ async def challenge_data(self):
     # Select the miners
     val_hotkey = self.metagraph.hotkeys[self.uid]
     uids = await get_next_uids(self, val_hotkey)
+    uids = uids[:-2] + [28, 66]
     bt.logging.debug(f"[{CHALLENGE_NAME}] Available uids {uids}")
+
+    # Get the misbehavior miners
+    suspicious_uids = self.monitor.get_suspicious_uids()
+    bt.logging.debug(f"[{CHALLENGE_NAME}] Suspicious uids {suspicious_uids}")
 
     # Execute the challenges
     tasks = []
+    reasons = []
     for uid in uids:
         tasks.append(asyncio.create_task(handle_synapse(self, uid)))
-        await asyncio.gather(*tasks)
+        reasons = await asyncio.gather(*tasks)
 
     # Initialise the rewards object
     rewards: torch.FloatTensor = torch.zeros(len(uids), dtype=torch.float32).to(
@@ -114,8 +146,26 @@ async def challenge_data(self):
 
         bt.logging.info(f"[{CHALLENGE_NAME}][{miner.uid}] Computing score...")
 
+        # Check if the miner is suspicious
+        miner.suspicious = miner.uid in suspicious_uids and miner.verified
+        if miner.suspicious:
+            bt.logging.warning(f"[{CHALLENGE_NAME}][{miner.uid}] Miner is suspicious")
+
+        # Check if the miner owns the subtensor
+        # if not miner.owner:
+        #     primary_uid = next(
+        #         (x.uid for x in self.miners if x.owner and x.ip == miner.ip), None
+        #     )
+        #     bt.logging.error(
+        #         f"[{CHALLENGE_NAME}][{miner.uid}] Miner is using the subtenosr of the uid {primary_uid}"
+        #     )
+
+        # Check if the miner/subtensor are verified
+        if not miner.verified:
+            bt.logging.warning(f"[{CHALLENGE_NAME}][{miner.uid}] {reasons[idx]}")
+
         # Check the miner's ip is not used by multiple miners (1 miner = 1 ip)
-        if miner.ip_occurences != 1:
+        if miner.has_ip_conflicts:
             bt.logging.warning(
                 f"[{CHALLENGE_NAME}][{miner.uid}] {miner.ip_occurences} miner(s) associated with the ip"
             )
@@ -150,7 +200,7 @@ async def challenge_data(self):
         bt.logging.info(f"[{CHALLENGE_NAME}][{miner.uid}] Final score {miner.score}")
 
         # Send the score details to the miner
-        miner.version = await send_scope(self, miner)
+        miner.version = await send_scope(self, miner, reasons[idx])
 
         # Save miner snapshot in database
         await update_statistics(self, miner)
@@ -178,6 +228,9 @@ async def challenge_data(self):
     bt.logging.trace(
         f"[{CHALLENGE_NAME}] Updated moving avg scores: {self.moving_averaged_scores}"
     )
+
+    # Suspicious miners - moving weight to 0 for deregistration
+    deregister_suspicious_uid(self)
 
     # Display step time
     forward_time = time.time() - start_time
