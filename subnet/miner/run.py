@@ -62,6 +62,13 @@ def run(self):
         if current_block % 100 == 0:
             check_registration(self.subtensor, self.wallet, netuid)
 
+        # --- Check for metragraph sync every 100 blocks (20 minutes).
+        if (
+            current_block - self.metagraph.last_update[self.my_subnet_uid]
+            > self.config.miner.epoch_length
+        ):
+            self.metagraph.sync(subtensor=self.subtensor)
+
         if should_upgrade(self.config.auto_update, self.last_upgrade_check):
             bt.logging.debug("Checking upgrade")
             must_restart = self.version_control.upgrade()
