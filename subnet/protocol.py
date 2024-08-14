@@ -23,6 +23,7 @@ class Score(Synapse):
     validator_uid: typing.Optional[int] = None
     availability: float
     latency: float
+    performance: float
     reliability: float
     distribution: float
     score: float

@@ -1,16 +1,16 @@
 import torch
 import time
+import random
 import asyncio
+import subprocess
 import bittensor as bt
 
 from subnet.constants import DEFAULT_PROCESS_TIME
-from subnet.shared.subtensor import get_current_block
 from subnet.validator.models import Miner
 from subnet.validator.synapse import send_scope
 from subnet.validator.security import is_miner_suspicious
 from subnet.validator.utils import (
     get_next_uids,
-    ping_uid,
     deregister_suspicious_uid,
 )
 from subnet.validator.bonding import update_statistics
@@ -19,82 +19,208 @@ from subnet.validator.score import (
     compute_availability_score,
     compute_reliability_score,
     compute_latency_score,
+    compute_performance_score,
     compute_distribution_score,
     compute_final_score,
 )
 from subnet.validator.constants import CHALLENGE_NAME
-from substrateinterface.base import SubstrateInterface
+
+MINER_PROPERTIES = [
+    "hotkey",
+    "coldkey",
+    "rank",
+    "emission",
+    "incentive",
+    "consensus",
+    "trust",
+    "last_update",
+    "axon_info",
+]
+
+VALIDATOR_PROPERTIES = [
+    "hotkey",
+    "coldkey",
+    "stake",
+    "rank",
+    "emission",
+    "validator_trust",
+    "dividends",
+    "last_update",
+    "axon_info",
+]
 
 
-async def handle_synapse(self, uid: int):
-    # Get the miner
-    miner: Miner = next((miner for miner in self.miners if miner.uid == uid), None)
-
-    # Check the miner is available
-    available, reason = await ping_uid(self, miner.uid)
-    if available == False:
-        miner.verified = False
-        miner.process_time = DEFAULT_PROCESS_TIME
-        return f"Miner is not verified: {reason}" if reason else "Miner is not verified"
-
-    bt.logging.trace(f"[{CHALLENGE_NAME}][{miner.uid}] Miner verified")
-
-    verified = False
-    sync = False
-    reason = None
-    process_time: float = DEFAULT_PROCESS_TIME
+def create_subtensor_challenge(subtensor: bt.subtensor):
+    """
+    Create the challenge that the miner subtensor will have to execute
+    """
     try:
-        # Create a subtensor with the ip return by the synapse
-        substrate = SubstrateInterface(
-            ss58_format=bt.__ss58_format__,
-            use_remote_preset=True,
-            url=f"ws://{miner.ip}:9944",
-            type_registry=bt.__type_registry__,
+        # Get the current block from the miner subtensor
+        current_block = subtensor.get_current_block()
+
+        # Select a block
+        block = random.randint(current_block - 256)
+
+        # Select the subnet
+        subnet_count = max(subtensor.get_subnets(block=block))
+        subnet_uid = random.randint(0, subnet_count)
+
+        # Select the neuron
+        neurons = subtensor.neurons_lite(block=block, netuid=subnet_uid)
+        neuron_index = random.randint(0, len(neurons) - 1)
+        neuron = neurons[neuron_index]
+        neuron_uid = neuron.uid
+
+        # Select the property
+        properties = (
+            MINER_PROPERTIES if neuron.axon_info.is_serving else VALIDATOR_PROPERTIES
         )
+        property_index = random.randint(0, len(properties) - 1)
+        neuron_property = properties[property_index]
 
-        # Set the timeout
-        substrate.websocket.timeout = DEFAULT_PROCESS_TIME
+        # Get the property value
+        neuron_value = getattr(neuron, neuron_property)
 
+        return (block, subnet_uid, neuron_uid, neuron_property, neuron_value)
+    except Exception as err:
+        bt.logging.error(err)
+        return None
+
+
+def challenge_miner(ip: str):
+    """
+    Challenge the miner by pinging it
+    """
+    verified = False
+    reason = None
+    process_time = None
+    try:
         # Start the timer
         start_time = time.time()
 
-        # Get the current block from the miner subtensor
-        miner_block = substrate.get_block()
-        if miner_block != None:
-            miner_block = miner_block["header"]["number"]
+        # Ping the miner
+        output = subprocess.run(
+            ["ping", "-c", "1", ip],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
         # Compute the process time
         process_time = time.time() - start_time
 
-        # Get the current block from the validator subtensor
-        validator_block = get_current_block(self.subtensor)
+        if output.returncode == 0:
+            verified = True
+        else:
+            error_output = output.stderr.decode()
+            if "Name or service not known" in error_output:
+                reason = "Hostname could not be resolved."
+            elif "Destination Host Unreachable" in error_output:
+                reason = "Destination host is unreachable."
+            elif "Request timeout" in error_output:
+                reason = "Request timed out."
+            else:
+                reason = "Unknown error occurred."
+    except Exception as err:
+        reason = f"An unexpected error occurred: {str(err)}"
 
-        # Sync with the diff between blocks are not more than 1 block
-        # If the validator is behind we do not want to penalise miners!
-        sync = abs(validator_block - miner_block) <= 1 or validator_block <= miner_block
+    return (verified, reason, process_time)
 
-        # Verified if there is block returned
-        verified = miner_block is not None
-        if not verified:
-            reason = f"Subtensor is not verified"
-        elif not sync:
-            reason = f"Subtensor is desync - {validator_block}/{miner_block}"
-    except Exception:
-        verified = False
-        reason = "Subtensor is not verified"
 
-    # Update the miner object
-    finally:
-        miner.verified = verified
-        miner.sync = sync
-        miner.process_time = process_time
+def challenge_subtensor(ip: str, challenge):
+    """
+    Challenge the subtensor by requesting the value of a property of a specific neuron in a specific subnet at a certain block
+    """
+    verified = False
+    reason = None
+    process_time = None
 
-    return reason
+    try:
+        # Get the details of the challenge
+        block, netuid, uid, neuron_property, expected_value = challenge
+
+        # Attempt to connect to the subtensor
+        try:
+            subtensor = bt.subtensor(network=f"ws://{ip}:9944")
+        except Exception:
+            reason = "Failed to connect to Subtensor node at the given IP."
+            return (verified, reason, process_time)
+
+        # Start the timer
+        start_time = time.time()
+
+        # Execute the challenge
+        try:
+            miner = subtensor.neuron_for_uid_lite(netuid=netuid, uid=uid, block=block)
+        except KeyError:
+            reason = "Invalid netuid or uid provided."
+            return (verified, reason, process_time)
+        except ValueError:
+            reason = "Invalid or unavailable block number."
+            return (verified, reason, process_time)
+        except Exception:
+            reason = "Failed to retrieve neuron details."
+            return (verified, reason, process_time)
+
+        # Access the specified property
+        try:
+            miner_value = getattr(miner, neuron_property)
+        except AttributeError:
+            reason = "Property not found in the neuron."
+            return (verified, reason, process_time)
+
+        # Compute the process time
+        process_time = time.time() - start_time
+
+        # Verify the challenge
+        verified = expected_value == miner_value
+    except Exception as err:
+        reason = f"An unexpected error occurred: {str(err)}"
+
+    return (verified, reason, process_time)
+
+
+async def handle_challenge(self, uid: int, challenge):
+    # Get the miner
+    miner: Miner = next((miner for miner in self.miners if miner.uid == uid), None)
+
+    # Set the process time by default
+    miner_time: float = DEFAULT_PROCESS_TIME
+    process_time: float = DEFAULT_PROCESS_TIME
+
+    # Challenge Miner - Ping time
+    miner_verified, miner_reason, miner_time = challenge_miner(miner.ip)
+
+    if miner_verified:
+        # Challenge Subtensor - Process time + check the challenge
+        subtensor_verified, subtensor_reason, subtensor_time = challenge_subtensor(
+            miner.ip, challenge
+        )
+        process_time = subtensor_time - miner_time
+
+    miner.verified = miner_verified and subtensor_verified
+    miner.routing_time = (
+        miner_time
+        if miner.routing_time != -1
+        else (miner.routing_time + miner_time) / 2
+    )
+    miner.process_time = (
+        process_time
+        if miner.process_time != -1
+        else (miner.process_time + process_time) / 2
+    )
+
+    return miner_reason if not miner_verified else subtensor_reason
 
 
 async def challenge_data(self):
     start_time = time.time()
     bt.logging.debug(f"[{CHALLENGE_NAME}] Step starting")
+
+    # Create the challenge
+    challenge = create_subtensor_challenge(self.subtensor)
+    if not challenge:
+        bt.logging.warning("Failed to create the challenge.")
+        return
 
     # Select the miners
     val_hotkey = self.metagraph.hotkeys[self.uid]
@@ -105,14 +231,11 @@ async def challenge_data(self):
     suspicious_uids = self.monitor.get_suspicious_uids()
     bt.logging.debug(f"[{CHALLENGE_NAME}] Suspicious uids {suspicious_uids}")
 
-    # Get the locations
-    locations = self.country_service.get_locations()
-
     # Execute the challenges
     tasks = []
     reasons = []
     for uid in uids:
-        tasks.append(asyncio.create_task(handle_synapse(self, uid)))
+        tasks.append(asyncio.create_task(handle_challenge(self, uid, challenge)))
         reasons = await asyncio.gather(*tasks)
 
     # Initialise the rewards object
@@ -154,11 +277,15 @@ async def challenge_data(self):
         )
 
         # Compute score for latency
-        miner.latency_score = compute_latency_score(
-            self.country_code, miner, self.miners, locations
-        )
+        miner.latency_score = compute_latency_score(miner, self.miners)
         bt.logging.debug(
             f"[{CHALLENGE_NAME}][{miner.uid}] Latency score {miner.latency_score}"
+        )
+
+        # Compute score for performance
+        miner.performance_score = compute_performance_score(miner, self.miners)
+        bt.logging.debug(
+            f"[{CHALLENGE_NAME}][{miner.uid}] Performance score {miner.latency_score}"
         )
 
         # Compute score for reliability

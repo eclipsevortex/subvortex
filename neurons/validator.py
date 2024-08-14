@@ -212,8 +212,10 @@ class Validator:
         self.country_service.wait()
 
         # Get the validator country
-        self.country_code = self.country_service.get_country(self.dendrite.external_ip)
-        bt.logging.debug(f"Validator based in {self.country_code}")
+        self.subregion, self.country_code = self.country_service.get_country(
+            self.dendrite.external_ip
+        )
+        bt.logging.debug(f"Validator based in {self.subregion}/{self.country_code}")
 
         # Init wandb.
         if not self.config.wandb.off:

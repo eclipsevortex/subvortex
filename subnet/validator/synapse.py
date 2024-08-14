@@ -19,6 +19,7 @@ async def send_scope(self, miner: Miner):
                 count=miner.ip_occurences,
                 availability=miner.availability_score,
                 latency=miner.latency_score,
+                performance=miner.performance_score,
                 reliability=miner.reliability_score,
                 distribution=miner.distribution_score,
                 score=miner.score,

@@ -15,32 +15,62 @@ from tests.unit_tests.utils.metagraph import (
 from subnet.validator.miner import resync_miners, get_all_miners
 
 default_axons_details = [
-    {"ip": "23.244.235.121", "country": "US"},
-    {"ip": "55.228.3.149", "country": "US"},
-    {"ip": "43.82.230.186", "country": "SG"},
-    {"ip": "191.230.100.214", "country": "BR"},
-    {"ip": "85.62.110.203", "country": "ES"},
-    {"ip": "187.64.109.14", "country": "BR"},
-    {"ip": "38.75.105.111", "country": "KR"},
-    {"ip": "176.65.235.230", "country": "IR"},
-    {"ip": "34.20.248.3", "country": "US"},
-    {"ip": "35.131.97.24", "country": "US"},
-    {"ip": "38.213.246.7", "country": "US"},
-    {"ip": "89.116.159.53", "country": "US"},
-    {"ip": "9.91.241.47", "country": "US"},
-    {"ip": "70.229.181.61", "country": "US"},
-    {"ip": "88.30.74.99", "country": "ES"},
-    {"ip": "88.30.24.99", "country": "ES"},
-    {"ip": "9.91.241.48", "country": "ES"},
+    {"ip": "23.244.235.121", "subregion": "North America", "country": "US"},
+    {"ip": "55.228.3.149", "subregion": "North America", "country": "US"},
+    {"ip": "43.82.230.186", "subregion": "Southeast Asia", "country": "SG"},
+    {"ip": "191.230.100.214", "subregion": "South America", "country": "BR"},
+    {"ip": "85.62.110.203", "subregion": "Southern Europe", "country": "ES"},
+    {"ip": "187.64.109.14", "subregion": "South America", "country": "BR"},
+    {"ip": "38.75.105.111", "subregion": "East Asia", "country": "KR"},
+    {"ip": "176.65.235.230", "subregion": "Southern Asia", "country": "IR"},
+    {"ip": "34.20.248.3", "subregion": "North America", "country": "US"},
+    {"ip": "35.131.97.24", "subregion": "North America", "country": "US"},
+    {"ip": "38.213.246.7", "subregion": "North America", "country": "US"},
+    {"ip": "89.116.159.53", "subregion": "North America", "country": "US"},
+    {"ip": "9.91.241.47", "subregion": "North America", "country": "US"},
+    {"ip": "70.229.181.61", "subregion": "North America", "country": "US"},
+    {"ip": "88.30.74.99", "subregion": "Southern Europe", "country": "ES"},
+    {"ip": "88.30.24.99", "subregion": "Southern Europe", "country": "ES"},
+    {"ip": "9.91.241.48", "subregion": "Southern Europe", "country": "ES"},
 ]
 
 locations = {
-    "US": {"country": "United States", "latitude": 37.09024, "longitude": -95.712891},
-    "SG": {"country": "Singapore", "latitude": 1.352083, "longitude": 103.819836},
-    "BR": {"country": "Brazil", "latitude": -14.235004, "longitude": -51.92528},
-    "ES": {"country": "Spain", "latitude": 40.463667, "longitude": -3.74922},
-    "KR": {"country": "South Korea", "latitude": 35.907757, "longitude": 127.766922},
-    "IR": {"country": "Iran", "latitude": 32.427908, "longitude": 53.688046},
+    "US": {
+        "subregion": "North America",
+        "country": "United States",
+        "latitude": 37.09024,
+        "longitude": -95.712891,
+    },
+    "SG": {
+        "subregion": "Southeast Asia",
+        "country": "Singapore",
+        "latitude": 1.352083,
+        "longitude": 103.819836,
+    },
+    "BR": {
+        "subregion": "South America",
+        "country": "Brazil",
+        "latitude": -14.235004,
+        "longitude": -51.92528,
+    },
+    "ES": {
+        "subregion": "Southern Europe",
+        "country": "Spain",
+        "latitude": 40.463667,
+        "longitude": -3.74922,
+    },
+    "KR": {
+        "subregion": "East Asia",
+        "country": "South Korea",
+        "latitude": 35.907757,
+        "longitude": 127.766922,
+    },
+    "IR": {
+        "subregion": "Southern Asia",
+        "country": "Iran",
+        "latitude": 32.427908,
+        "longitude": 53.688046,
+    },
 }
 
 
@@ -91,7 +121,7 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
     ):
         # Arrange
         axons_details = copy.deepcopy(default_axons_details) + [
-            {"ip": "19.91.241.48", "country": "US"}
+            {"ip": "19.91.241.48", "subregion": "North America", "country": "US"}
         ]
 
         self.validator.country_service = MagicMock()
@@ -125,6 +155,7 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert "19.91.241.48" == miner.ip
         assert 1 == miner.ip_occurences
         assert "0.0.0" == miner.version
+        assert "North America" == miner.subregion
         assert "US" == miner.country
         assert 0 == miner.challenge_successes
         assert 0 == miner.challenge_successes
@@ -133,7 +164,8 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert 0 == miner.reliability_score
         assert 0 == miner.latency_score
         assert 0 == miner.score
-        assert 0 == miner.process_time
+        assert -1 == miner.process_time
+        assert -1 == miner.routing_time
         assert False == miner.suspicious
         assert False == miner.sync
         assert False == miner.verified
@@ -175,6 +207,7 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert axon_detail["ip"] == miner.ip
         assert 1 == miner.ip_occurences
         assert "0.0.0" == miner.version
+        assert axon_detail["subregion"] == miner.subregion
         assert axon_detail["country"] == miner.country
         assert 0 == miner.challenge_successes
         assert 0 == miner.challenge_successes
@@ -183,7 +216,8 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert 0 == miner.reliability_score
         assert 0 == miner.latency_score
         assert 0 == miner.score
-        assert 0 == miner.process_time
+        assert -1 == miner.process_time
+        assert -1 == miner.routing_time
         assert False == miner.suspicious
         assert False == miner.sync
         assert False == miner.verified
@@ -212,7 +246,7 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
             self.validator,
             axons_details,
             10,
-            axon_detail={"ip": "31.129.22.101", "country": "PT"},
+            axon_detail={"ip": "31.129.22.101", "subregion": "Southern Europe", "country": "PT"},
         )
 
         # Act
@@ -226,6 +260,7 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert "31.129.22.101" == miner.ip
         assert 1 == miner.ip_occurences
         assert "0.0.0" == miner.version
+        assert "Southern Europe" == miner.subregion
         assert "PT" == miner.country
         assert 0 == miner.challenge_successes
         assert 0 == miner.challenge_successes
@@ -234,7 +269,8 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert 0 == miner.reliability_score
         assert 0 == miner.latency_score
         assert 0 == miner.score
-        assert 0 == miner.process_time
+        assert -1 == miner.process_time
+        assert -1 == miner.routing_time
         assert False == miner.suspicious
         assert False == miner.sync
         assert False == miner.verified
@@ -262,7 +298,7 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         new_uid = replace_old_miner(
             self.validator,
             axons_details,
-            axon_detail={"ip": "19.91.241.48", "country": "US"},
+            axon_detail={"ip": "19.91.241.48", "subregion": "North America", "country": "US"},
         )
 
         # Act
@@ -270,12 +306,12 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         assert len(miners) == len(self.validator.miners)
-
         miner = self.validator.miners[new_uid]
         assert "miner-hotkey-17" == miner.hotkey
         assert "19.91.241.48" == miner.ip
         assert 1 == miner.ip_occurences
         assert "0.0.0" == miner.version
+        assert "North America" == miner.subregion
         assert "US" == miner.country
         assert 0 == miner.challenge_successes
         assert 0 == miner.challenge_successes
@@ -284,7 +320,8 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert 0 == miner.reliability_score
         assert 0 == miner.latency_score
         assert 0 == miner.score
-        assert 0 == miner.process_time
+        assert -1 == miner.process_time
+        assert -1 == miner.routing_time
         assert False == miner.suspicious
         assert False == miner.sync
         assert False == miner.verified

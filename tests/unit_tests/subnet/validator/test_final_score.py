@@ -9,6 +9,7 @@ def test_a_not_verified_miner_should_return_a_score_of_zero():
     miner.verified = False
     miner.sync = False
     miner.availability_score = 0
+    miner.performance_score = 0
     miner.latency_score = 0
     miner.reliability_score = 0
     miner.distribution_score = 0
@@ -26,17 +27,19 @@ def test_a_not_sync_miner_should_return_a_score_different_of_zero():
     miner.verified = True
     miner.sync = False
     miner.availability_score = 0.10
-    miner.latency_score = 0.20
-    miner.reliability_score = 0.30
-    miner.distribution_score = 0.40
+    miner.performance_score = 0.20
+    miner.latency_score = 0.30
+    miner.reliability_score = 0.40
+    miner.distribution_score = 0.50
 
-    expected_score = (0.10 * 3 + 0.20 * 7 + 0.30 * 3 + 0.40 * 2) / 15
+    expected_score = (0.10 * 3 + 0.20 * 7 + 0.30 * 7 + 0.40 * 3 + 0.50 * 2) / 22
+    print(0.10 * 3 + 0.20 * 7 + 0.30 * 7 + 0.40 * 3 + 0.50 * 2)
 
     # Act
     result = compute_final_score(miner)
 
     # Assert
-    assert expected_score == result
+    assert abs(expected_score - result) < 1e-9
 
 
 def test_a_suspicious_miner_with_no_penalty_factor_should_return_a_score_of_zero():
@@ -45,9 +48,10 @@ def test_a_suspicious_miner_with_no_penalty_factor_should_return_a_score_of_zero
     miner.verified = True
     miner.sync = False
     miner.availability_score = 0.10
-    miner.latency_score = 0.20
-    miner.reliability_score = 0.30
-    miner.distribution_score = 0.40
+    miner.performance_score = 0.20
+    miner.latency_score = 0.30
+    miner.reliability_score = 0.40
+    miner.distribution_score = 0.50
 
     # Act
     result = compute_final_score(miner)
@@ -62,18 +66,19 @@ def test_a_suspicious_miner_with_penalty_factor_should_return_a_score_different_
     miner.verified = True
     miner.sync = False
     miner.availability_score = 0.10
-    miner.latency_score = 0.20
-    miner.reliability_score = 0.30
-    miner.distribution_score = 0.40
+    miner.performance_score = 0.20
+    miner.latency_score = 0.30
+    miner.reliability_score = 0.40
+    miner.distribution_score = 0.50
     miner.penalty_factor = 0.4
 
-    expected_score = ((0.10 * 3 + 0.20 * 7 + 0.30 * 3 + 0.40 * 2) / 15) * 0.4
+    expected_score = ((0.10 * 3 + 0.20 * 7 + 0.30 * 7 + 0.40 * 3 + 0.50 * 2) / 22) * 0.4
 
     # Act
     result = compute_final_score(miner)
 
     # Assert
-    assert expected_score == result
+    assert abs(expected_score - result) < 1e-9
 
 
 def test_a_verified_and_sync_miner_should_return_a_score_different_of_zero():
@@ -82,14 +87,15 @@ def test_a_verified_and_sync_miner_should_return_a_score_different_of_zero():
     miner.verified = True
     miner.sync = True
     miner.availability_score = 0.10
-    miner.latency_score = 0.20
-    miner.reliability_score = 0.30
-    miner.distribution_score = 0.40
+    miner.performance_score = 0.20
+    miner.latency_score = 0.30
+    miner.reliability_score = 0.40
+    miner.distribution_score = 0.50
 
-    expected_score = (0.10 * 8 + 0.20 * 7 + 0.30 * 3 + 0.40 * 2) / 20
+    expected_score = (0.10 * 8 + 0.20 * 7 + 0.30 * 7 + 0.40 * 3 + 0.50 * 2) / 27
 
     # Act
     result = compute_final_score(miner)
 
     # Assert
-    assert expected_score == result
+    assert abs(expected_score - result) < 1e-9

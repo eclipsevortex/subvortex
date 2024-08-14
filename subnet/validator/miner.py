@@ -5,6 +5,7 @@ from subnet.validator.models import Miner
 from subnet.validator.score import (
     compute_distribution_score,
     compute_availability_score,
+    compute_performance_score,
     compute_latency_score,
     compute_final_score,
 )
@@ -45,21 +46,23 @@ async def get_all_miners(self) -> List[Miner]:
         # Check there are not more than 1 miner associated with the ip
         ip_occurences = get_miner_ip_occurences(axon.ip, ips)
 
+        # Get subregion, country of the axon
+        subregion, country = self.country_service.get_country(axon.ip)
+
         statistics = await get_hotkey_statistics(axon.hotkey, self.database)
         if statistics is None:
             miner = Miner(
                 uid=uid,
                 ip=axon.ip,
                 hotkey=axon.hotkey,
-                country=self.country_service.get_country(axon.ip),
+                subregion=subregion,
+                country=country,
                 ip_occurences=ip_occurences,
+                process_time=-1,
+                routing_time=-1,
             )
         else:
             # In hash set everything is stored as a string to the verified need to be manage differently
-            country = self.country_service.get_country(axon.ip)
-            if country == None:
-                country = get_field_value(statistics.get(b"country"))
-
             version = get_field_value(statistics.get(b"version"), "0.0.0")
             verified = get_field_value(statistics.get(b"verified"), "0")
             score = get_field_value(statistics.get(b"score"), 0)
@@ -78,6 +81,7 @@ async def get_all_miners(self) -> List[Miner]:
                 statistics.get(b"challenge_attempts"), 0
             )
             process_time = get_field_value(statistics.get(b"process_time"), 0)
+            routing_time = get_field_value(statistics.get(b"routing_time"), 0)
 
             miner = Miner(
                 uid=uid,
@@ -85,6 +89,7 @@ async def get_all_miners(self) -> List[Miner]:
                 ip_occurences=ip_occurences,
                 hotkey=axon.hotkey,
                 version=version,
+                subregion=subregion,
                 country=country,
                 verified=verified == "1",
                 score=score,
@@ -95,6 +100,7 @@ async def get_all_miners(self) -> List[Miner]:
                 challenge_successes=challenge_successes,
                 challenge_attempts=challenge_attempts,
                 process_time=process_time,
+                routing_time=routing_time,
             )
 
         # Update the database just to be sure we have the right country
@@ -109,8 +115,15 @@ async def add_new_miner(self, uid: int, ip: str, hotkey: str):
     """
     Add a new miner
     """
+    subregion, country = self.country_service.get_country(ip)
     miner = Miner(
-        uid=uid, ip=ip, hotkey=hotkey, country=self.country_service.get_country(ip)
+        uid=uid,
+        ip=ip,
+        hotkey=hotkey,
+        subregion=subregion,
+        country=country,
+        process_time=-1,
+        routing_time=-1,
     )
     self.miners.append(miner)
 
@@ -126,8 +139,11 @@ async def replace_old_miner(self, ip: str, hotkey: str, miner: Miner):
     # Remove the old hotkey statistics
     await remove_hotkey_stastitics(miner.hotkey, self.database)
 
+    # Get subregion and country from the ip
+    subregion, country = self.country_service.get_country(ip)
+
     # Reset the new miner
-    miner.reset(ip, hotkey, self.country_service.get_country(ip))
+    miner.reset(ip=ip, hotkey=hotkey, subregion=subregion, country=country)
 
     return old_hotkey
 
@@ -138,8 +154,11 @@ def move_miner(self, ip: str, miner: Miner):
     """
     previous_ip = miner.ip
 
+    # Get subregion and country from the ip
+    subregion, country = self.country_service.get_country(ip)
+
     # Reset the miner as it changed ip so everything has to be re-evaluated
-    miner.reset(ip, miner.hotkey, self.country_service.get_country(ip))
+    miner.reset(ip=ip, hotkey=miner.hotkey, subregion=subregion, country=country)
 
     return previous_ip
 
@@ -207,12 +226,14 @@ async def resync_miners(self):
             )
 
         # Check if the country has been overrided
-        country_overrided = self.country_service.get_country(miner.ip)
-        if country_overrided and miner.country != country_overrided:
+        subregion, country = self.country_service.get_country(miner.ip)
+        if country and miner.country != country:
+            previous_subregion = miner.subregion
             previous_country = miner.country
-            miner.country = country_overrided
+            miner.subregion = subregion
+            miner.country = country
             bt.logging.success(
-                f"[{miner.uid}][{previous_country}] Miner's country overrided by {miner.country}"
+                f"[{miner.uid}][{previous_subregion}/{previous_country}] Miner's country overrided by {miner.subregion}/{miner.country}"
             )
 
     # Focus on impacts resulting of these changes
@@ -223,15 +244,15 @@ async def resync_miners(self):
         miner.ip_occurences = get_miner_ip_occurences(miner.ip, ips)
 
     bt.logging.debug("resync_miners() refreshing scores")
-    locations = self.country_service.get_locations()
     for miner in self.miners:
         # Refresh the availability score
         miner.availability_score = compute_availability_score(miner)
 
+        # Refresh performance score
+        miner.performance_score = compute_performance_score(miner, self.miners)
+
         # Refresh latency score
-        miner.latency_score = compute_latency_score(
-            self.country_code, miner, self.miners, locations
-        )
+        miner.latency_score = compute_latency_score(miner, self.miners)
 
         # Refresh the distribution score
         miner.distribution_score = compute_distribution_score(miner, self.miners)
