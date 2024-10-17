@@ -125,11 +125,11 @@ echo -e '\e[32mWASM buils environment initialized\e[0m'
 # Compile the subtensor binary
 if [[ $NETWORK == "testnet" ]]; then
     echo "Compiling subtensor on network $NETWORK..."
-    cargo build --release --features pow-faucet --features runtime-benchmarks --locked
+    cargo build -p node-subtensor --profile=production --features pow-faucet --features=runtime-benchmarks
     echo -e "\e[32mSubtensor on network $NETWORK is compiled\e[0m"
     elif [[ $NETWORK == "mainnet" ]]; then
     echo "Compiling subtensor on network $NETWORK..."
-    cargo build --release --features runtime-benchmarks --locked
+    cargo build -p node-subtensor --profile=production --features=runtime-benchmarks
     echo -e "\e[32mSubtensor on network $NETWORK is compiled\e[0m"
 fi
 

@@ -144,8 +144,8 @@ def set_weights_for_validator(
             uids=uint_uids,
             weights=uint_weights,
             version_key=spec_version,
-            wait_for_finalization=False,
-            wait_for_inclusion=False,
+            wait_for_finalization=wait_for_finalization,
+            wait_for_inclusion=wait_for_inclusion,
         )
 
         if success is True:
