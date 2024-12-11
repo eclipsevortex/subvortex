@@ -14,17 +14,11 @@
 # THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
-
-import os
-
-# Use torch in metagraph
-os.environ["USE_TORCH"] = "1"
-
 import time
 import copy
-import torch
 import asyncio
 import threading
+import numpy as np
 import bittensor.core.config as btcc
 import bittensor.core.subtensor as btcs
 import bittensor.core.metagraph as btcm
@@ -77,7 +71,7 @@ class Validator:
         wallet (btw.wallet): Cryptographic wallet containing keys for transactions and encryption.
         metagraph (btcm.metagraph): Graph structure storing the state of the network.
         database (redis.StrictRedis): Database instance for storing metadata and proofs.
-        moving_averaged_scores (torch.Tensor): Tensor tracking performance scores of other nodes.
+        moving_averaged_scores: performance scores of other nodes.
     """
 
     @classmethod
@@ -112,11 +106,6 @@ class Validator:
 
         # Show miner version
         btul.logging.debug(f"validator version {THIS_VERSION}")
-
-        # Init device.
-        btul.logging.debug("loading device")
-        self.device = torch.device(self.config.neuron.device)
-        btul.logging.debug(str(self.device))
 
         # Init validator wallet.
         btul.logging.debug(f"loading wallet")
@@ -170,7 +159,7 @@ class Validator:
 
         # Init Weights.
         btul.logging.debug("loading moving_averaged_scores")
-        self.moving_averaged_scores = torch.zeros((self.metagraph.n)).to(self.device)
+        self.moving_averaged_scores = np.zeros((self.metagraph.n))
         btul.logging.debug(str(self.moving_averaged_scores))
 
         self.uid = self.metagraph.hotkeys.index(self.wallet.hotkey.ss58_address)
@@ -297,7 +286,6 @@ class Validator:
                     btul.logging.debug(f"Setting weights {self.moving_averaged_scores}")
                     set_weights_for_validator(
                         uid=self.uid,
-                        device=self.device,
                         subtensor=self.subtensor,
                         wallet=self.wallet,
                         metagraph=self.metagraph,

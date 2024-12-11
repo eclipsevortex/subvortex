@@ -16,7 +16,6 @@
 # DEALINGS IN THE SOFTWARE.
 
 import os
-import torch
 import argparse
 import datetime
 import bittensor.utils.btlogging as btul
@@ -117,12 +116,6 @@ def add_args(cls, parser):
         type=str,
         help="Trials for this miner go in miner.root / (wallet_cold - wallet_hot) / miner.name. ",
         default="subvortex_miner",
-    )
-    parser.add_argument(
-        "--miner.device",
-        type=str,
-        help="Device to run the validator on.",
-        default="cuda" if torch.cuda.is_available() else "cpu",
     )
     parser.add_argument("--miner.verbose", default=False, action="store_true")
     parser.add_argument(

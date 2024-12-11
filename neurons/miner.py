@@ -15,14 +15,9 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 import os
-
-# Use torch in metagraph
-os.environ["USE_TORCH"] = "1"
-
 import sys
 import time
 import copy
-import torch
 import typing
 import asyncio
 import threading

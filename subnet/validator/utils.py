@@ -90,7 +90,7 @@ def get_available_uids(self, exclude: list = None):
     """Returns all available uids from the metagraph.
 
     Returns:
-        uids (torch.LongTensor): All available uids.
+        uids: All available uids.
     """
     avail_uids = []
 
