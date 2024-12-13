@@ -30,8 +30,6 @@ class Miner:
     challenge_attempts: int = 0
     process_time: float = 0
     verified: bool = False
-    # True if the miner subtensor is sync which mean the block is equal or more recent than the validator one
-    sync: bool = False
     # True if the miner is suspicious (its weight will be 0), false otherwise
     suspicious: bool = False
     penalty_factor: int = None
@@ -64,7 +62,6 @@ class Miner:
         self.version = version or "0.0.0"
         self.country = country or ""
         self.verified = verified if verified is not None else False
-        self.sync = sync if sync is not None else False
         self.suspicious = suspicious if suspicious is not None else False
         self.penalty_factor = penalty_factor
         self.score = float(score or 0)
@@ -82,7 +79,6 @@ class Miner:
         self.version = "0.0.0"
         self.country = country or ""
         self.verified = False
-        self.sync = False
         self.suspicious = False
         self.penalty_factor = None
         self.score = 0
@@ -119,10 +115,10 @@ class Miner:
         }
 
     def __str__(self):
-        return f"Miner(uid={self.uid}, hotkey={self.hotkey}, ip={self.ip}, ip_occurences={self.ip_occurences}, version={self.version}, country={self.country}, verified={self.verified}, sync={self.sync}, suspicious={self.suspicious}, penalty_factor={self.penalty_factor}, score={self.score}, availability_score={self.availability_score}, latency_score={self.latency_score}, reliability_score={self.reliability_score}, distribution_score={self.distribution_score}, challenge_attempts={self.challenge_attempts}, challenge_successes={self.challenge_successes}, process_time={self.process_time})"
+        return f"Miner(uid={self.uid}, hotkey={self.hotkey}, ip={self.ip}, ip_occurences={self.ip_occurences}, version={self.version}, country={self.country}, verified={self.verified}, suspicious={self.suspicious}, penalty_factor={self.penalty_factor}, score={self.score}, availability_score={self.availability_score}, latency_score={self.latency_score}, reliability_score={self.reliability_score}, distribution_score={self.distribution_score}, challenge_attempts={self.challenge_attempts}, challenge_successes={self.challenge_successes}, process_time={self.process_time})"
 
     def __repr__(self):
-        return f"Miner(uid={self.uid}, hotkey={self.hotkey}, ip={self.ip}, ip_occurences={self.ip_occurences}, version={self.version}, country={self.country}, verified={self.verified}, sync={self.sync}, suspicious={self.suspicious}, penalty_factor={self.penalty_factor}, score={self.score}, availability_score={self.availability_score}, latency_score={self.latency_score}, reliability_score={self.reliability_score}, distribution_score={self.distribution_score}, challenge_attempts={self.challenge_attempts}, challenge_successes={self.challenge_successes}, process_time={self.process_time})"
+        return f"Miner(uid={self.uid}, hotkey={self.hotkey}, ip={self.ip}, ip_occurences={self.ip_occurences}, version={self.version}, country={self.country}, verified={self.verified}, suspicious={self.suspicious}, penalty_factor={self.penalty_factor}, score={self.score}, availability_score={self.availability_score}, latency_score={self.latency_score}, reliability_score={self.reliability_score}, distribution_score={self.distribution_score}, challenge_attempts={self.challenge_attempts}, challenge_successes={self.challenge_successes}, process_time={self.process_time})"
 
     def __eq__(self, other):
         if isinstance(other, Miner):
@@ -142,7 +138,6 @@ class Miner:
                 and self.challenge_successes == other.challenge_successes
                 and self.process_time == other.process_time
                 and self.verified == other.verified
-                and self.sync == other.sync
                 and self.suspicious == other.suspicious
                 and self.penalty_factor == other.penalty_factor
             )

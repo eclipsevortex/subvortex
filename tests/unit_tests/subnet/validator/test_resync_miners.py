@@ -151,7 +151,6 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert 0 == miner.score
         assert 0 == miner.process_time
         assert False == miner.suspicious
-        assert False == miner.sync
         assert False == miner.verified
 
     async def test_given_a_full_metagraph_when_a_uid_has_a_new_hotkey_with_same_ip_should_replace_the_old_miner_by_the_new_one_in_the_list(
@@ -201,7 +200,6 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert 0 == miner.score
         assert 0 == miner.process_time
         assert False == miner.suspicious
-        assert False == miner.sync
         assert False == miner.verified
 
     async def test_given_a_full_metagraph_when_a_uid_has_a_same_hotkey_with_different_ip_should_replace_the_old_miner_by_the_new_one_in_the_list(
@@ -252,7 +250,6 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert 0 == miner.score
         assert 0 == miner.process_time
         assert False == miner.suspicious
-        assert False == miner.sync
         assert False == miner.verified
 
     async def test_given_a_full_metagraph_when_a_uid_has_a_new_hotkey_with_different_ip_should_replace_the_old_miner_by_the_new_one_in_the_list(
@@ -302,7 +299,6 @@ class TestResyncMiners(unittest.IsolatedAsyncioTestCase):
         assert 0 == miner.score
         assert 0 == miner.process_time
         assert False == miner.suspicious
-        assert False == miner.sync
         assert False == miner.verified
 
     async def test_given_a_metagraph_when_a_uid_is_not_running_should_be_removed_from_the_list(

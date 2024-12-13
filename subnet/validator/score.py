@@ -164,7 +164,7 @@ def compute_latency_score(
     )
 
     # Step 3: Baseline Latency Calculation
-    baseline_latency = sum(process_times) / len(process_times) 
+    baseline_latency = sum(process_times) / len(process_times)
     btul.logging.trace(f"[{miner.uid}][Score][Latency] Base latency {baseline_latency}")
 
     # Step 4: Relative Latency Score Calculation
@@ -236,20 +236,15 @@ def compute_final_score(miner: Miner):
     """
     Compute the final score based on the different scores (availability, reliability, latency and distribution)
     """
-    # Use a smaller weight if the subtensor is available but desync (miner block < validator block - 1)
-    availability_weight = (
-        3 if miner.verified and not miner.sync else AVAILABILITY_WEIGHT
-    )
-
     numerator = (
-        (availability_weight * miner.availability_score)
+        (AVAILABILITY_WEIGHT * miner.availability_score)
         + (LATENCY_WEIGHT * miner.latency_score)
         + (RELIABILLITY_WEIGHT * miner.reliability_score)
         + (DISTRIBUTION_WEIGHT * miner.distribution_score)
     )
 
     denominator = (
-        availability_weight + LATENCY_WEIGHT + RELIABILLITY_WEIGHT + DISTRIBUTION_WEIGHT
+        AVAILABILITY_WEIGHT + LATENCY_WEIGHT + RELIABILLITY_WEIGHT + DISTRIBUTION_WEIGHT
     )
 
     score = numerator / denominator if denominator != 0 else 0
